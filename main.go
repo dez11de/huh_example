@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
+	"os"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -42,13 +44,15 @@ var fruits = []fruit{
 	{"Orange", "Orange"},
 	{"Banana", "Yellow"},
 	{"Grapes", "Blue"},
+    {"Lychee", "White"},
 }
 
 type fruitList struct {
 	list *list.Model
 }
 
-func initialFruitList() (fl fruitList) {
+func initialFruitList() *fruitList {
+	fl := new(fruitList)
 	newList := list.New(nil, fruit{}, 0, 10)
 	fl.list = &newList
 
@@ -91,7 +95,8 @@ type fruitForm struct {
 	color *huh.Input
 }
 
-func initialFruitForm() (ff fruitForm) {
+func initialFruitForm() *fruitForm {
+	ff := new(fruitForm)
 	ff.name = huh.NewInput().Title("Name").Key("name")
 	ff.color = huh.NewInput().Title("Color").Key("color")
 	ff.form = huh.NewForm(
@@ -133,8 +138,9 @@ func (ff fruitForm) View() string {
 	return ff.form.View()
 }
 
-func (ff fruitForm) NewFruit() {
+func (ff *fruitForm) NewFruit() {
 	newFruit := fruit{}
+    ff.name.Focus() 
 	ff.name.Value(&newFruit.name)
 	ff.color.Value(&newFruit.color)
 }
@@ -152,8 +158,8 @@ const (
 )
 
 type UI struct {
-	fruitList fruitList
-	fruitForm fruitForm
+	fruitList *fruitList
+	fruitForm *fruitForm
 	active    activeComponent
 }
 
@@ -179,31 +185,39 @@ func (ui UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch key {
 		case "n":
-			ui.active = formComponent
 			ui.fruitForm.NewFruit()
-			ui.fruitForm, _ = ui.fruitForm.Update(nil)
+			tempFruitForm, _ := ui.fruitForm.Update(nil)
+			ui.fruitForm = &tempFruitForm
+			ui.active = formComponent
 			return ui, nil
 		}
 
 	case FruitAddedMsg:
+		ui.NewForm()
 		ui.active = listComponent
 		cmd = ui.fruitList.LoadFruits()
-		return ui, cmd
+		cmds = append(cmds, cmd)
 	}
 
 	switch ui.active {
 
 	case listComponent:
-		ui.fruitList, cmd = ui.fruitList.Update(msg)
+		tempFruitList, cmd := ui.fruitList.Update(msg)
+		ui.fruitList = &tempFruitList
 		cmds = append(cmds, cmd)
 		ui.fruitForm.SetValues(fruits[ui.fruitList.list.Index()])
 
 	case formComponent:
-		ui.fruitForm, cmd = ui.fruitForm.Update(msg)
+		tempFruitForm, cmd := ui.fruitForm.Update(msg)
+		ui.fruitForm = &tempFruitForm
 		cmds = append(cmds, cmd)
 	}
 
 	return ui, tea.Batch(cmds...)
+}
+
+func (ui *UI) NewForm() {
+	ui.fruitForm = initialFruitForm()
 }
 
 func (ui UI) View() string {
@@ -214,6 +228,13 @@ func (ui UI) View() string {
 }
 
 func main() {
+	f, err := os.OpenFile("debug.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o666)
+	if err != nil {
+		fmt.Printf("failed. Aborting.\nError: %v", err)
+		return
+	}
+	log.SetOutput(f)
+	log.Println(" ----------------------------------------------------------------")
 	ui := initialUI()
 
 	if _, err := tea.NewProgram(ui).Run(); err != nil {
